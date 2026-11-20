@@ -15,3 +15,13 @@
 1. `roulette.html` を編集する
 2. `deploy/index.html` にコピーする
 3. `main` に push すると Vercel が自動で本番デプロイする
+
+## AWS 版
+
+公開URL: https://d3nhegk708l5n.cloudfront.net
+
+CloudFront（HTTPS）→ S3（画面） / Lambda（`/api/*`）→ Neon。構成は `aws/template.yaml`（スタック名 `roulette`、東京リージョン）。
+
+- 画面の更新:
+  `aws s3 cp roulette.html s3://roulette-sitebucket-rrrvbkhe2iye/index.html --content-type "text/html; charset=utf-8" --cache-control "max-age=60"`
+- API・構成の更新: `aws/` で `aws cloudformation package` → `aws cloudformation deploy`（`DatabaseUrl` パラメータが必要）
