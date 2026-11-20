@@ -108,6 +108,12 @@
   .history li { padding: 4px 10px; border-radius: 999px; font-weight: bold; font-size: 0.85rem; }
   .history li.w { background: #facc15; color: #7c2d12; }
   .history li.l { background: #334155; color: #94a3b8; }
+  .db-status { font-size: 0.75rem; margin-left: 6px; color: #64748b; }
+  .db-status.ok { color: #4ade80; }
+  .db-status.ng { color: #f87171; }
+  .global { margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);
+    font-size: 0.85rem; color: #cbd5e1; line-height: 1.7; }
+  .global b { color: #facc15; }
 
   /* ===== 大当たり演出 ===== */
   #fx { position: fixed; inset: 0; pointer-events: none; z-index: 50; }
@@ -212,9 +218,10 @@
       <div class="check"><input type="checkbox" id="soundOn" checked><label for="soundOn">サウンド ON</label></div>
       <div class="check"><input type="checkbox" id="premoOn" checked><label for="premoOn">予告演出（激アツ）</label></div>
       <div class="history">
-        履歴
+        履歴 <span id="dbStatus" class="db-status"></span>
         <ol id="historyList"></ol>
       </div>
+      <div class="global" id="globalStats"></div>
     </div>
   </div>
 
@@ -254,6 +261,65 @@
   let angle = 0;
   let spinning = false;
   let stats = { spins: 0, wins: 0, combo: 0 };
+
+  // ===== データベース連携（/api/spins） =====
+  const API = "/api/spins";
+  const dbStatus = document.getElementById("dbStatus");
+  const globalStats = document.getElementById("globalStats");
+  let clientId = localStorage.getItem("roulette-client-id");
+  if (!clientId) {
+    clientId = crypto.randomUUID();
+    localStorage.setItem("roulette-client-id", clientId);
+  }
+  function setDbStatus(ok, text) {
+    dbStatus.className = "db-status " + (ok ? "ok" : "ng");
+    dbStatus.textContent = text;
+  }
+  function addHistoryItem(win, prepend = true) {
+    const li = document.createElement("li");
+    li.className = win ? "w" : "l";
+    li.textContent = win ? "当" : "×";
+    prepend ? historyList.prepend(li) : historyList.append(li);
+  }
+  function renderGlobal(all) {
+    if (!all) return;
+    const rate = all.spins ? (all.wins / all.spins * 100).toFixed(1) : "0.0";
+    globalStats.innerHTML =
+      `🌏 みんなの記録<br>総回転 <b>${all.spins}</b> ／ 大当たり <b>${all.wins}</b>` +
+      `（${rate}%）／ プレイヤー <b>${all.players}</b>人`;
+  }
+  async function loadFromDb() {
+    try {
+      const r = await fetch(`${API}?client=${clientId}`);
+      if (!r.ok) throw new Error(r.status);
+      const data = await r.json();
+      historyList.innerHTML = "";
+      data.recent.forEach(s => addHistoryItem(s.win, false));
+      stats.spins = data.mine.spins;
+      stats.wins = data.mine.wins;
+      updateStats();
+      renderGlobal(data.all);
+      setDbStatus(true, "● DB保存中");
+    } catch {
+      setDbStatus(false, "● DB未接続（この端末のみ）");
+    }
+  }
+  async function saveToDb(win) {
+    try {
+      const r = await fetch(API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId, win, hits, combo: stats.combo }),
+      });
+      if (!r.ok) throw new Error(r.status);
+      setDbStatus(true, "● DB保存中");
+      // 全体統計だけ更新
+      const g = await fetch(`${API}?client=${clientId}`);
+      if (g.ok) renderGlobal((await g.json()).all);
+    } catch {
+      setDbStatus(false, "● 保存に失敗しました");
+    }
+  }
 
   function buildSegments() {
     segments = Array(SEG).fill(false);
@@ -458,23 +524,21 @@
     premoEl.classList.remove("show");
     wheelWrap.classList.remove("hot");
     stats.spins++;
-    const li = document.createElement("li");
     if (win) {
       stats.wins++; stats.combo++;
-      li.className = "w"; li.textContent = "当";
       resultEl.className = "result win";
       resultEl.textContent = "🎉 大当たり！！ 🎉";
       jackpot();
     } else {
       stats.combo = 0;
-      li.className = "l"; li.textContent = "×";
       resultEl.className = "result lose";
       resultEl.textContent = "はずれ…";
       loseSound();
       spinning = false; spinBtn.disabled = false;
     }
-    historyList.prepend(li);
+    addHistoryItem(win);
     updateStats();
+    saveToDb(win);
   }
 
   let bonusTimers = [];
@@ -554,6 +618,7 @@
 
   buildSegments();
   idle();
+  loadFromDb();
 </script>
 </body>
 </html>

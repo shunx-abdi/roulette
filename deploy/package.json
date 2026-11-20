@@ -1,0 +1,11 @@
+{
+  "name": "roulette",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "db:init": "node --env-file=.env.local scripts/init-db.mjs"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.0"
+  }
+}
